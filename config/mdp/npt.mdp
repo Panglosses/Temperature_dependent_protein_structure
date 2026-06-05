@@ -1,12 +1,3 @@
-#!/bin/bash
-# ============================================================================
-# Module 6: NPT equilibration (constant pressure)
-# ============================================================================
-
-cd ~/ICA_3RF3
-
-# Create NPT parameter file
-cat > npt.mdp << EOF
 title = NPT equilibration
 define = -DPOSRES
 integrator = md
@@ -39,11 +30,3 @@ lincs_order = 4
 lincs_iter = 1
 comm-mode = Linear
 comm-grps = Protein
-EOF
-
-# Generate binary input for NPT
-# -r nvt.gro provides reference coordinates for position restraints
-gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -p topol.top -o npt.tpr -maxwarn 1
-
-# Run NPT equilibration
-gmx mdrun -v -deffnm npt

@@ -1,106 +1,197 @@
-# Temperature-dependent Molecular Dynamics Simulation of the IpaA–Vinculin Protein Complex
+# IpaA-Vinculin MD Pipeline
 
-## 1. Background and Scientific Question
+This folder contains the GitHub-ready code for the CMML ICA1 mini-project:
+temperature-dependent molecular dynamics analysis of the IpaA-vinculin complex.
 
-IpaA is a key virulence factor of *Shigella flexneri*. It binds to the host protein vinculin and manipulates the host cytoskeleton to promote bacterial invasion. This protein–protein interaction is a central component of the pathogenic mechanism of *Shigella*.
+## What changed
 
-**Scientific question addressed in this work: How does temperature affect the structural stability, compactness, binding-interface strength, and secondary-structure composition of the IpaA–vinculin complex?**
+The original `code/` directory contained 12 flat scripts. They worked, but they
+were hard to browse, reuse, or extend. The code is now reorganized into:
 
-To answer this question, we performed all-atom molecular dynamics (MD) simulations of the PDB structure **3RF3** at **three temperatures: 280 K, 300 K, and 320 K**. Each simulation was run for **50 ns**, and the behaviour of the complex was compared using four structural analysis metrics.
+- `config/`: shared pipeline parameters and reusable `.mdp` files
+- `scripts/00_preparation/`: structure setup, solvation, ion addition
+- `scripts/01_equilibration/`: energy minimization, NVT, NPT
+- `scripts/02_production/`: 50 ns production MD at 280 K, 300 K, and 320 K
+- `scripts/03_analysis/`: RMSD, Rg, hydrogen bonds, DSSP, final structure export,
+  and a computed summary table
+- `utils/`: common shell helpers shared by all scripts
+- `docs/`: manual steps that were part of the report but not fully scripted
 
----
+This structure keeps the pipeline order obvious while making it easier to
+maintain.
 
-## 2. Software and Force Field
-
-| Item | Description |
-|---|---|
-| MD engine | GROMACS (GPU acceleration, 16 OpenMP threads) |
-| Force field | AMBER99SB-ILDN |
-| Water model | TIP3P |
-| Initial structure source | RCSB PDB: [3RF3](https://www.rcsb.org/structure/3RF3) |
-
----
-
-## 3. Workflow Overview
+## Directory layout
 
 ```text
-01_setup_pdb.sh           Download PDB → add hydrogen atoms → generate topology
-02_box_solvate.sh         Define cubic box (1.0 nm boundary) → solvate with TIP3P water
-03_add_ions.sh            Add Na⁺/Cl⁻ ions to neutralize charge → physiological salt concentration (0.15 M)
-04_energy_minimization.sh Steepest-descent energy minimization (50,000 steps)
-05_nvt_equilibration.sh   NVT equilibration (100 ps, 300 K, position restraints)
-06_npt_equilibration.sh   NPT equilibration (100 ps, 300 K, 1 bar)
-07_production_md.sh       Production MD (50 ns) × 3 temperatures (280 K / 300 K / 320 K)
-08_analysis_rmsd.sh       Backbone RMSD analysis
-09_analysis_gyrate.sh     Radius of gyration (Rg) analysis
-10_analysis_hbond.sh      Inter-chain hydrogen-bond analysis
-11_analysis_dssp.sh       Secondary-structure analysis using DSSP
-12_extract_final_structure.sh Extract final-frame protein structure (PDB)
-4. Simulation Protocol
-Parameter	Setting
-Integration time step	2 fs
-Production MD length	50 ns (25,000,000 steps)
-Non-bonded cutoff radius (Coulomb + vdW)	1.0 nm
-Long-range electrostatics	PME (Particle Mesh Ewald)
-Constraint algorithm	LINCS, including bonds involving hydrogen
-Temperature coupling	V-rescale, with protein and non-protein groups coupled separately
-Pressure coupling	Parrinello–Rahman, isotropic, 1 bar
-Production MD temperature conditions	280 K, 300 K, 320 K
-Trajectory output frequency	One frame every 10 ps
-5. Rationale for the Three-temperature Design
-Temperature	Scientific rationale
-280 K	Slightly below room temperature; represents a low-temperature condition and tests whether the complex becomes more rigid or compact
-300 K	Close to room temperature and used as the reference condition
-320 K	Above room temperature; represents mild thermal stress and tests whether the complex becomes unstable, dissociates, or loses secondary structure
-6. Analysis Metrics and Physical Interpretation
-Analysis	Command	Measured object	Scientific interpretation
-RMSD	gmx rms	Backbone atoms	Degree of structural deviation from the initial conformation; lower RMSD indicates greater structural stability
-Radius of gyration (Rg)	gmx gyrate	All protein Cα atoms	Compactness of the protein complex; increased Rg suggests expansion or partial unfolding
-Inter-chain hydrogen bonds	gmx hbond	Chain A (IpaA) ↔ Chain B (vinculin)	Strength of the binding interface; fewer hydrogen bonds suggest weakening of the complex interface
-Secondary structure (DSSP)	gmx dssp	Each residue	Temperature-dependent changes in α-helix, β-sheet, turn, and random-coil content
+code/
+  README.md
+  run_all.sh
+  config/
+    defaults.sh
+    mdp/
+      ions.mdp
+      em.mdp
+      nvt.mdp
+      npt.mdp
+      md.template.mdp
+  docs/
+    manual_steps.md
+  scripts/
+    00_preparation/
+      00_fix_structure_with_pdbfixer.py
+      01_setup_pdb.sh
+      02_box_solvate.sh
+      03_add_ions.sh
+    01_equilibration/
+      04_energy_minimization.sh
+      05_nvt_equilibration.sh
+      06_npt_equilibration.sh
+    02_production/
+      07_production_md.sh
+    03_analysis/
+      08_analysis_rmsd.sh
+      09_analysis_gyrate.sh
+      10_analysis_hbond.sh
+      11_analysis_dssp.sh
+      12_extract_final_structure.sh
+      13_collect_metrics.sh
+  utils/
+    common.sh
+```
 
-For all metrics, the mean and standard deviation were calculated over the final 10 ns (40–50 ns) equilibrium window to ensure that the analysis reflects the relaxed stage of the simulations.
+## Requirements
 
-7. Usage
-# Run the scripts sequentially
-bash 01_setup_pdb.sh
-bash 02_box_solvate.sh
-bash 03_add_ions.sh
-bash 04_energy_minimization.sh
-bash 05_nvt_equilibration.sh
-bash 06_npt_equilibration.sh
-bash 07_production_md.sh
-bash 08_analysis_rmsd.sh
-bash 09_analysis_gyrate.sh
-bash 10_analysis_hbond.sh
-bash 11_analysis_dssp.sh
-bash 12_extract_final_structure.sh
+- `bash`
+- `gmx` from GROMACS
+- `wget`
+- DSSP support for `gmx dssp`
+- optional: `pdbfixer` and `openmm` if you want to repair the input PDB first
+- A Linux or HPC environment is recommended for production runs
 
-Requirement: GROMACS must be installed and configured with GPU support.
+## Default pipeline settings
 
-8. Output File Structure
-~/ICA_3RF3/
-├── complex.gro / topol.top          # Topology and initial structure
-├── solv_ions.gro                    # Solvated and ionized system
-├── em.gro                           # Energy-minimized structure
-├── nvt.gro / npt.gro                # Equilibrated structures
-├── md_280/   md_300/   md_320/      # Production MD results for the three temperatures
-│   ├── md_XXX.xtc                   # Trajectory file
-│   ├── md_XXX.tpr / .cpt / .log
-│   ├── rmsd_XXX.xvg                 # RMSD time series
-│   ├── gyrate_XXX.xvg               # Radius of gyration time series
-│   ├── hbond_XXX.xvg                # Inter-chain hydrogen-bond time series
-│   ├── ss_XXX.dat                   # Secondary-structure assignment data
-│   └── final_XXX_protein.pdb        # Final frame, protein only
-9. Expected Conclusions
+The shared settings live in `config/defaults.sh`.
 
-By comparing the four metrics across the three temperatures, this workflow can address the following questions:
+Key defaults:
 
-Does high temperature (320 K) significantly increase RMSD?
-→ Tests whether the overall complex structure becomes destabilized.
-Does high temperature increase Rg?
-→ Tests whether the protein complex undergoes thermal expansion or partial unfolding.
-Does high temperature reduce the number of inter-chain hydrogen bonds?
-→ Tests whether the binding interface weakens under thermal stress.
-Does high temperature alter secondary-structure composition?
-→ Tests whether specific structural elements, such as α-helices or β-sheets, differ in thermal stability.
+- working directory: `~/ICA_3RF3`
+- PDB ID: `3RF3`
+- force field: `amber99sb-ildn`
+- water model: `tip3p`
+- box distance: `1.0 nm`
+- ion concentration: `0.15 M`
+- production temperatures: `280 300 320`
+- production length: `50 ns`
+- analysis window: `40-50 ns`
+
+Important note:
+
+- the hydrogen-bond script still uses atom-index ranges to separate the two
+  chains
+- if you change the input structure or repair it with PDBFixer, re-check
+  `CHAIN_A_RANGE` and `CHAIN_B_RANGE` in `config/defaults.sh`
+
+You can override settings at runtime, for example:
+
+```bash
+export WORKDIR="$HOME/my_md_run"
+export INPUT_PDB="3RF3_clean.pdb"
+export PRODUCTION_THREADS=8
+export MDRUN_NB=cpu
+```
+
+## Run order
+
+Run the full pipeline:
+
+```bash
+bash run_all.sh
+```
+
+Or run stage by stage:
+
+```bash
+python scripts/00_preparation/00_fix_structure_with_pdbfixer.py \
+  --input 3RF3.pdb \
+  --output 3RF3_clean.pdb
+
+export INPUT_PDB="3RF3_clean.pdb"
+bash scripts/00_preparation/01_setup_pdb.sh
+bash scripts/00_preparation/02_box_solvate.sh
+bash scripts/00_preparation/03_add_ions.sh
+
+bash scripts/01_equilibration/04_energy_minimization.sh
+bash scripts/01_equilibration/05_nvt_equilibration.sh
+bash scripts/01_equilibration/06_npt_equilibration.sh
+
+bash scripts/02_production/07_production_md.sh
+
+bash scripts/03_analysis/08_analysis_rmsd.sh
+bash scripts/03_analysis/09_analysis_gyrate.sh
+bash scripts/03_analysis/10_analysis_hbond.sh
+bash scripts/03_analysis/11_analysis_dssp.sh
+bash scripts/03_analysis/12_extract_final_structure.sh
+bash scripts/03_analysis/13_collect_metrics.sh
+```
+
+## Outputs
+
+The scripts write the MD outputs into `WORKDIR` and place the final exported
+artifacts under:
+
+```text
+$WORKDIR/analysis_artifacts/
+  final_structures/
+  summaries/
+```
+
+`13_collect_metrics.sh` creates:
+
+- `summary_table_computed.csv`
+
+This file includes the metrics that are directly computed from the scripted
+pipeline:
+
+- RMSD mean and standard deviation
+- radius of gyration
+- inter-chain hydrogen bonds
+- DSSP secondary-structure percentages
+
+## What is intentionally documented but not fully scripted
+
+Some results in the final report came from tools that are partly manual or
+web-based, such as:
+
+- PROCHECK Ramachandran outliers
+- PISA interface area and binding free energy
+- AlphaFold structure comparison and alignment
+
+These steps are described in [docs/manual_steps.md](docs/manual_steps.md).
+
+## Figure export note
+
+For structure figures, use the outputs from `12_extract_final_structure.sh`
+instead of extracting directly from the raw trajectory in PyMOL.
+
+- `final_*_protein_whole.pdb`: protein-only final frame after PBC correction
+- `final_*_protein_noH.pdb`: the same structure with hydrogens removed for
+  cleaner visualization
+
+This avoids floating bond lines caused by periodic boundary wrapping and usually
+produces cleaner overlay figures.
+
+## Optional structure-repair step
+
+There was also a separate `PDBFixer` helper in the original project directory.
+It is now included as `scripts/00_preparation/00_fix_structure_with_pdbfixer.py`
+so structure repair is tracked together with the main pipeline instead of living
+as an unrelated file elsewhere in the project tree.
+
+## Why this split is better
+
+- Repeated `.mdp` content is no longer embedded in multiple scripts.
+- Shared parameters are defined once in `config/defaults.sh`.
+- The numbered workflow is still preserved for traceability.
+- Analysis is separated from simulation, so reruns are easier.
+- The repository now makes clear which parts are automated and which parts are
+  report-side manual checks.
